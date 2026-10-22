@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Demo</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#111;color:#ddd;font:15px/1.5 system-ui,sans-serif}
+  .box{width:min(320px,80vw);text-align:center}
+  .bar{height:6px;background:#333;border-radius:3px;overflow:hidden;margin-top:12px}
+  .bar i{display:block;height:100%;width:0;background:#8ab4f8;transition:width .2s}
+</style>
+</head>
+<body>
+<div class="box"><div id="msg">불러오는 중…</div><div class="bar"><i id="p"></i></div></div>
+<script>
+(async function () {
+  var msg = document.getElementById('msg'), bar = document.getElementById('p');
+  var m = location.hash.match(/k=([A-Za-z0-9_-]+)/);
+  if (!m) { msg.textContent = '잠긴 페이지입니다. QR 코드로 접속해 주세요.'; bar.parentNode.remove(); return; }
+  try {
+    var b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    var keyBytes = Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
+    var res = await fetch('d.bin', { cache: 'no-cache' });
+    var total = +res.headers.get('content-length') || 0, got = 0, chunks = [];
+    var reader = res.body.getReader();
+    for (;;) {
+      var r = await reader.read();
+      if (r.done) break;
+      chunks.push(r.value); got += r.value.length;
+      if (total) bar.style.width = (got / total * 100).toFixed(1) + '%';
+    }
+    var buf = new Uint8Array(got), o = 0;
+    chunks.forEach(function (c) { buf.set(c, o); o += c.length; });
+    msg.textContent = '여는 중…';
+    var key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']);
+    var gz = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: buf.slice(0, 12) }, key, buf.slice(12));
+    var html = await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    document.open(); document.write(html); document.close();
+  } catch (e) {
+    msg.textContent = '열 수 없습니다. QR 코드가 맞는지 확인해 주세요.';
+  }
+})();
+</script>
+</body>
+</html>
